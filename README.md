@@ -1,5 +1,10 @@
 # tennelo
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/treegerjm/tennelo/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/treegerjm/tennelo/actions/workflows/R-CMD-check.yaml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE.md)
+<!-- badges: end -->
+
 Elo ratings for tennis, computed from ATP match results — overall and by
 playing surface.
 

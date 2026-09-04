@@ -1,7 +1,7 @@
 ^analysis$
 ^data-raw$
 ^\.github$
-^PLAN.*\.md$
+^DESIGN\.md$
 ^LICENSE\.md$
 ^tennelo\.Rproj$
 ^\.Rproj\.user$

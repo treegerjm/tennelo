@@ -13,8 +13,8 @@ the quality of the opponent. `tennelo` exists to compute the second one
 reproducibly, so the two can be compared.
 
 **Status:** complete for version 1. Core, data preparation, fitting engine,
-ranking comparison and the analysis are all implemented and tested. See
-[`PLAN.md`](PLAN.md) for the full specification.
+ranking comparison and the analysis are all implemented and tested.
+[`DESIGN.md`](DESIGN.md) explains why it is built the way it is.
 
 ## Results
 
@@ -153,4 +153,5 @@ Users are responsible for complying with that licence when downloading and
 processing the data; see [`DATA-SOURCES.md`](DATA-SOURCES.md).
 
 Parts of this package were written with AI assistance. The model design, the
-decisions recorded in `PLAN.md` and their rationale are the author's.
+decisions recorded in [`DESIGN.md`](DESIGN.md) and their rationale are the
+author's.

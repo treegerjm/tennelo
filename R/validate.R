@@ -2,7 +2,7 @@
 #
 # Every check aborts with a classed condition so that tests can assert on the
 # condition class rather than on message text. Nothing here ever returns NA:
-# an invalid input is an error, by design (see PLAN, section 6.1).
+# an invalid input is an error, by design. See DESIGN.md, "Precision".
 
 abort_input <- function(message, class, arg) {
   rlang::abort(message, class = c(class, "tennelo_input_error"), arg = arg)

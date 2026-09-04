@@ -1,4 +1,4 @@
-# The precision contract from PLAN section 6.1.
+# The precision contract from DESIGN.md.
 #
 # Properties are split into those that hold to the last bit and those that need
 # a tolerance. The split is not cosmetic: claiming bit-equality everywhere would

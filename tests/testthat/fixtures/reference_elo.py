@@ -15,7 +15,7 @@ def match_k(ka, kb): return ka if ka == kb else math.sqrt(ka * kb)
 #   2  ungleiches K         -> Modi laufen auseinander
 #   3  Favorit gewinnt      -> kleines delta
 #   4  Ueberraschung        -> grosses delta
-#   5  wiederholte Paarung  -> Zaehler und K wandern weiter
+#   5  a repeated pairing, with both counters advanced
 SEQ = [("A","B"), ("C","A"), ("A","B"), ("B","C"), ("C","A")]
 
 def run(pairing):

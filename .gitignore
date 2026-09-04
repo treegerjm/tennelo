@@ -1,0 +1,17 @@
+# Downloaded source data — never committed, see DATA-SOURCES.md
+data-raw/csv/
+
+# User-supplied external rating lists for validate-external.R
+reference/
+
+# Rendered analysis output
+analysis/*.html
+analysis/*_files/
+
+# R artefacts
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rcheck/
+*.tar.gz

@@ -1,0 +1,8 @@
+^analysis$
+^data-raw$
+^\.github$
+^PLAN.*\.md$
+^LICENSE\.md$
+^tennelo\.Rproj$
+^\.Rproj\.user$
+^DATA-SOURCES\.md$

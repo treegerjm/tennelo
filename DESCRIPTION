@@ -1,0 +1,27 @@
+Package: tennelo
+Type: Package
+Title: Elo Ratings for Tennis
+Version: 0.0.0.9000
+Authors@R: person("Justus", "Treeger",
+                  email = "304457939+treegerjm@users.noreply.github.com",
+                  role = c("aut", "cre"))
+Description: Computes Elo ratings from ATP match results, overall and by
+    playing surface. Provides the rating primitives (expected score,
+    experience-dependent K-factor, rating update) as pure, vectorised
+    functions, so that the update rule can be tested exactly. Two pairing
+    rules are supported: separate K-factors per player, matching the
+    convention used by published tennis Elo lists, and a single symmetric
+    match K-factor that conserves the rating pool.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: R (>= 4.1)
+Imports:
+    rlang
+Suggests:
+    testthat (>= 3.0.0),
+    ggplot2
+Config/testthat/edition: 3
+URL: https://github.com/treegerjm/tennelo
+BugReports: https://github.com/treegerjm/tennelo/issues
+Config/roxygen2/version: 8.1.0

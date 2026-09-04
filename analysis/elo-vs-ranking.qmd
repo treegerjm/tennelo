@@ -1,0 +1,323 @@
+---
+title: "Elo against the ATP ranking"
+subtitle: "Where the two disagree, and who each one rates highest"
+author: "Justus Treeger"
+date: today
+format:
+  html:
+    toc: true
+    df-print: kable
+    fig-width: 9
+    fig-height: 5
+knitr:
+  opts_chunk:
+    echo: false
+    warning: false
+    message: false
+---
+
+```{r setup}
+suppressMessages(pkgload::load_all("..", quiet = TRUE))
+library(ggplot2)
+
+MATCH_DIR   <- "../data-raw/csv/matches"
+RANK_DIR    <- "../data-raw/csv/rankings"
+ACTIVE_DAYS <- 365
+MIN_OVERALL <- 20
+MIN_SURFACE <- 10
+PAIRING     <- "individual"
+LEVELS      <- c("G", "M", "A", "F", "O")
+
+match_files <- list.files(MATCH_DIR, pattern = "^atp_matches_[0-9]{4}\\.csv$",
+                          full.names = TRUE)
+rank_files  <- list.files(RANK_DIR, pattern = "^atp_rankings_.*\\.csv$",
+                          full.names = TRUE)
+stopifnot(length(match_files) > 0, length(rank_files) > 0)
+
+raw      <- load_matches(match_files)
+matches  <- prepare_matches(raw, levels = LEVELS, retirements = "include")
+rankings <- prepare_rankings(load_rankings(rank_files))
+
+fit <- fit_elo(matches, pairing = PAIRING)
+AS_OF <- fit$as_of
+
+players <- utils::read.csv(file.path(RANK_DIR, "atp_players.csv"),
+                           colClasses = "character")
+players$name <- trimws(paste(players$name_first, players$name_last))
+nm <- function(id) {
+  i <- match(as.character(id), players$player_id)
+  ifelse(is.na(i), as.character(id), players$name[i])
+}
+
+manifest <- utils::read.csv(file.path(MATCH_DIR, "MANIFEST.csv"))
+```
+
+## What this analysis fixes before it starts
+
+Every number below depends on these choices. They are analysis decisions, made
+here and visible, not hidden package defaults.
+
+```{r parameters}
+data.frame(
+  Parameter = c("Match data cut-off", "ATP ranking used", "Tournament levels",
+                "Pairing rule", "Activity window", "Minimum matches (overall)",
+                "Minimum matches (surface)", "Retirements",
+                "K parameters", "Package version",
+                "Source", "Source commit", "Files retrieved"),
+  Value = c(
+    format(AS_OF),
+    format(max(rankings$ranking_date[rankings$ranking_date <= AS_OF])),
+    paste(LEVELS, collapse = ", "),
+    PAIRING,
+    paste(ACTIVE_DAYS, "days"),
+    MIN_OVERALL, MIN_SURFACE, "included",
+    sprintf("k_start=%g, offset=%g, shape=%g",
+            fit$config$k_start, fit$config$offset, fit$config$shape),
+    as.character(utils::packageVersion("tennelo")),
+    as.character(manifest$source[1]),
+    substr(as.character(manifest$source_commit[1]), 1, 12),
+    nrow(manifest)
+  ),
+  check.names = FALSE
+)
+```
+
+Elo is an estimate inside a disclosed model. It is not a measurement of true
+playing strength, and nothing below should be read as one.
+
+## 1. Data coverage and exclusions
+
+```{r coverage}
+rep <- exclusion_report(matches)
+dropped <- rep$dropped[rep$dropped > 0]
+data.frame(
+  Item = c("Raw rows read", "Rated", names(dropped)),
+  Rows = c(rep$n_input, rep$n_kept, unname(dropped)),
+  check.names = FALSE
+)
+```
+
+```{r coverage-check}
+stopifnot(rep$n_kept + sum(rep$dropped) == rep$n_input)
+cat(sprintf("Rated matches: %s, covering %s to %s, %s players.\n",
+            format(fit$n_matches, big.mark = ","),
+            fit$first_date, fit$as_of,
+            format(fit$n_players, big.mark = ",")))
+```
+
+Every excluded row is counted by reason, and the counts reconcile with the
+input. No filtering happens silently.
+
+## 2. Elo leaderboard, overall
+
+```{r leaderboard}
+lb <- elo_leaderboard(fit, n = 20, active_within = ACTIVE_DAYS,
+                      min_matches = MIN_OVERALL)
+lb$Player <- nm(lb$player_id)
+lb$Rating <- round(lb$rating, 1)
+lb[, c("rank", "Player", "Rating", "matches", "last_match")]
+```
+
+## 3. By surface
+
+```{r surface-fits}
+SURFACES <- c("Hard", "Clay", "Grass")
+surface_fits <- lapply(SURFACES, function(s) fit_elo(matches, surface = s,
+                                                     pairing = PAIRING))
+names(surface_fits) <- SURFACES
+
+surface_tops <- lapply(SURFACES, function(s) {
+  f <- surface_fits[[s]]
+  t <- elo_leaderboard(f, n = 10, as_of = AS_OF,
+                       active_within = ACTIVE_DAYS, min_matches = MIN_SURFACE)
+  data.frame(Surface = s, Rank = t$rank, Player = nm(t$player_id),
+             Rating = round(t$rating, 1), Matches = t$matches)
+})
+do.call(rbind, surface_tops)
+```
+
+```{r surface-sizes}
+data.frame(
+  Surface = SURFACES,
+  Matches = vapply(surface_fits, function(f) f$n_matches, numeric(1)),
+  Players = vapply(surface_fits, function(f) f$n_players, numeric(1))
+)
+```
+
+Grass carries far fewer matches than hard or clay, so its ratings are the least
+stable of the three and should be read with that in mind.
+
+Carpet is left out. It was a real surface for decades -- 22% of matches in 1975
+-- but the ATP dropped it at the end of the 2000s, and no currently active
+player has a meaningful carpet record. The matches stay in the overall model;
+a carpet leaderboard of active players would be empty of meaning.
+
+## 4. Elo against the ATP ranking
+
+```{r comparison}
+cmp <- compare_rankings(fit, rankings, as_of = AS_OF,
+                        active_within = ACTIVE_DAYS,
+                        min_matches = MIN_OVERALL, n = 20)
+data.frame(
+  Measure = c("Elo cut-off", "ATP ranking date", "Same day?",
+              "Players compared", "Matched on player id",
+              "Spearman rank correlation", "Top-20 overlap"),
+  Value = c(format(cmp$elo_date), format(cmp$atp_date),
+            if (cmp$same_day) "yes" else sprintf("no, %.0f days apart", cmp$gap_days),
+            cmp$n_elo, sprintf("%d (%.1f%%)", cmp$n_matched, 100 * cmp$pct_matched),
+            sprintf("%.3f", cmp$spearman),
+            sprintf("%d of %d", cmp$top_n_overlap, cmp$top_n)),
+  check.names = FALSE
+)
+```
+
+```{r scatter}
+cc <- cmp$comparison
+cc$Player <- nm(cc$player_id)
+ggplot(cc, aes(atp_rank, elo_rank)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", linewidth = 0.3) +
+  geom_point(alpha = 0.55, size = 1.6) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "ATP rank (log)", y = "Elo rank (log)",
+       title = "Where the two rankings agree, and where they do not",
+       subtitle = sprintf("%d active players, %s. Points above the line are rated higher by ATP.",
+                          cmp$n_matched, format(AS_OF))) +
+  theme_minimal()
+```
+
+## 5. The largest disagreements
+
+```{r divergence-up}
+up <- utils::head(cc[order(-cc$rank_diff), ], 10)
+data.frame(Player = up$Player, `Elo rank` = up$elo_rank,
+           `ATP rank` = up$atp_rank, Difference = up$rank_diff,
+           Rating = round(up$rating, 1), Matches = up$matches,
+           `Last match` = up$last_match, check.names = FALSE)
+```
+
+```{r divergence-down}
+dn <- utils::head(cc[order(cc$rank_diff), ], 10)
+data.frame(Player = dn$Player, `Elo rank` = dn$elo_rank,
+           `ATP rank` = dn$atp_rank, Difference = dn$rank_diff,
+           Rating = round(dn$rating, 1), Matches = dn$matches,
+           `Last match` = dn$last_match, check.names = FALSE)
+```
+
+The two tables have distinct characters, and both trace back to a documented
+limitation of this model rather than to noise.
+
+Players Elo rates far above their ATP rank are largely returning from long
+absences. An ATP ranking decays when a player stops entering tournaments; an
+Elo rating does not move at all. The model has no absence correction, so a
+player who was strong, disappeared, and came back keeps the rating they left
+with.
+
+Players ATP rates far above their Elo rank are largely young players climbing
+fast. They built much of their ranking at Challenger level, which this analysis
+excludes, so they enter the data at 1500 with no earned history. Their Elo has
+not yet caught up with what they have actually done.
+
+## 6. Careers
+
+```{r careers}
+top6 <- utils::head(lb$player_id, 6)
+plot_elo_history(fit, top6) +
+  labs(title = "Rating histories of the current top six")
+```
+
+```{r peaks}
+peaks <- do.call(rbind, lapply(top6, function(p) elo_peak(fit, p, min_matches = MIN_OVERALL)))
+data.frame(Player = nm(peaks$player_id), `Peak rating` = round(peaks$rating, 1),
+           `Reached at` = peaks$tourney_date, Matches = peaks$matches_played,
+           check.names = FALSE)
+```
+
+Peak dates are tournament start dates. The source records when a tournament
+began, not when a match was played, so that is the finest resolution available.
+
+## 7. Sensitivity
+
+Every headline above rests on choices. These are the same numbers under
+plausible alternatives.
+
+```{r sensitivity-pairing}
+alt <- fit_elo(matches, pairing = "symmetric")
+alt_lb <- elo_leaderboard(alt, n = 20, active_within = ACTIVE_DAYS,
+                          min_matches = MIN_OVERALL)
+both <- merge(
+  data.frame(player_id = lb$player_id, individual = lb$rank),
+  data.frame(player_id = alt_lb$player_id, symmetric = alt_lb$rank),
+  by = "player_id", all = TRUE
+)
+both$Player <- nm(both$player_id)
+both <- both[order(both$individual), c("Player", "individual", "symmetric")]
+both
+```
+
+```{r sensitivity-table}
+variants <- list(
+  `baseline`                = list(pairing = PAIRING, ret = "include", act = ACTIVE_DAYS, min = MIN_OVERALL),
+  `symmetric pairing`       = list(pairing = "symmetric", ret = "include", act = ACTIVE_DAYS, min = MIN_OVERALL),
+  `retirements excluded`    = list(pairing = PAIRING, ret = "exclude", act = ACTIVE_DAYS, min = MIN_OVERALL),
+  `activity window 180d`    = list(pairing = PAIRING, ret = "include", act = 180, min = MIN_OVERALL),
+  `minimum 50 matches`      = list(pairing = PAIRING, ret = "include", act = ACTIVE_DAYS, min = 50)
+)
+rows <- lapply(names(variants), function(v) {
+  cfg <- variants[[v]]
+  mm <- if (cfg$ret == "include") matches else
+    prepare_matches(raw, levels = LEVELS, retirements = "exclude")
+  ff <- if (cfg$pairing == PAIRING && cfg$ret == "include") fit else
+    fit_elo(mm, pairing = cfg$pairing)
+  cm <- compare_rankings(ff, rankings, as_of = AS_OF,
+                         active_within = cfg$act, min_matches = cfg$min, n = 20)
+  tb <- elo_leaderboard(ff, n = 1, active_within = cfg$act, min_matches = cfg$min)
+  data.frame(Variant = v, `Top player` = nm(tb$player_id),
+             Spearman = round(cm$spearman, 3),
+             `Top-20 overlap` = cm$top_n_overlap,
+             Compared = cm$n_elo, check.names = FALSE)
+})
+do.call(rbind, rows)
+```
+
+```{r sensitivity-k}
+k_rows <- lapply(list(c(150, 5, 0.4), c(250, 5, 0.4), c(400, 5, 0.4), c(250, 5, 0.2)),
+  function(k) {
+    ff <- fit_elo(matches, pairing = PAIRING,
+                  k_start = k[1], offset = k[2], shape = k[3])
+    cm <- compare_rankings(ff, rankings, as_of = AS_OF,
+                           active_within = ACTIVE_DAYS, min_matches = MIN_OVERALL)
+    tb <- elo_leaderboard(ff, n = 1, active_within = ACTIVE_DAYS,
+                          min_matches = MIN_OVERALL)
+    data.frame(`k_start` = k[1], offset = k[2], shape = k[3],
+               `Top player` = nm(tb$player_id),
+               Spearman = round(cm$spearman, 3),
+               `Top-20 overlap` = cm$top_n_overlap, check.names = FALSE)
+  })
+do.call(rbind, k_rows)
+```
+
+## 8. What this cannot tell you
+
+- **The order within a week is approximate.** `tourney_date` is the tournament
+  start date, not the match date, so matches played in the same week can be
+  rated out of sequence. Player ids break remaining ties deterministically;
+  that makes the result reproducible, not chronologically true.
+- **Challenger and qualifying results are excluded.** Everyone enters at 1500,
+  which is roughly an average tour professional. A real newcomer is below that
+  and hands out points they never earned. This is visible in section 5.
+- **Early ratings are uncertain.** A player near the minimum match threshold
+  can sit high on a short run of upsets. `min_matches` limits this; it does not
+  remove it.
+- **Grass has a small sample**, and carpet is excluded from the leaderboards
+  entirely.
+- **There is no absence or injury correction.** A player returning after a year
+  out keeps the rating they left with. This is the main driver of section 5's
+  first table.
+- **Surface and overall ratings are not blended.** Each surface model is fitted
+  independently and knows nothing of the others.
+- **Cross-era comparison is out of scope.** Under `individual` pairing the pool
+  drifts, so ratings from different decades are not on a common scale. Every
+  comparison here is between players on one date.
+- **Elo is a model estimate, not a measurement.** A different K, a different
+  match set or a different pairing rule gives different numbers, as section 7
+  shows directly.
